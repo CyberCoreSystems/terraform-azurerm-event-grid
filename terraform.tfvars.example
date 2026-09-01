@@ -1,0 +1,134 @@
+# ==============================================================================
+#  azure-event-grid — terraform.tfvars
+# ==============================================================================
+#  Copy this file to `terraform.tfvars`, set the values, then run:
+#      tofu init && tofu apply        (or:  terraform init && terraform apply)
+#
+# AUTHENTICATION — Azure:
+#   The azurerm (and azuread) providers authenticate to Microsoft Entra ID
+#   (Azure AD) and resolve credentials in this order: explicit OIDC, then
+#   client certificate, then client secret, then Managed Identity, then Azure
+#   CLI.
+#   Quick start: az login (then `az account set --subscription <id>`; `az
+#   login --use-device-code` for headless, `az login --service-principal -u
+#   <appId> -p <secret> --tenant <tenant>` for SP).
+#   Environment variables Terraform reads:
+#     ARM_SUBSCRIPTION_ID — Target subscription GUID; required for plan/apply in provider v4.x.
+#     ARM_TENANT_ID — Entra ID (Azure AD) tenant GUID.
+#     ARM_CLIENT_ID — App registration / service principal (or user-assigned MSI) client id.
+#     ARM_CLIENT_SECRET  (secret) — Service principal client secret (secret-based auth).
+#     ARM_CLIENT_CERTIFICATE_PATH — Path to the PKCS#12 (.pfx) client certificate.
+#   Full guide (auth + remote state):  docs/CONNECTING-PROVIDERS.md#azure
+#
+#  Secrets below read "REPLACE_ME" — never commit real secrets. Prefer
+#  TF_VAR_<name> environment variables or a secrets manager.
+#  Status: static-validated, live-test pending (see README.md).
+# ==============================================================================
+
+
+# ------------------------------------------------------------------------------
+#  REQUIRED — you must set these
+# ------------------------------------------------------------------------------
+
+# name  —  string  (REQUIRED)
+#   Name of the Event Grid custom topic (3-50 chars, letters, digits and
+#   hyphens). Also used to derive child resource names.
+#   Constraint: name must be 3-50 characters of letters, digits and hyphens
+#   only.
+name                = "egt-app-prod"
+
+# resource_group_name  —  string  (REQUIRED)
+#   Name of an existing resource group to create the topic (and optional queue
+#   target) in.
+resource_group_name = "rg-eventgrid-example"
+
+# location  —  string  (REQUIRED)
+#   Azure region for all resources.
+location            = "eastus2"
+
+# ------------------------------------------------------------------------------
+#  OPTIONAL — defaults shown; uncomment a line to override
+# ------------------------------------------------------------------------------
+
+# input_schema  —  string  (optional, default: "EventGridSchema")
+#   Schema the topic accepts from publishers. CustomEventSchema is intentionally
+#   not supported (it requires input mapping); use EventGridSchema or
+#   CloudEventSchemaV1_0. Changing this forces a new topic.
+#   Constraint: input_schema must be EventGridSchema or CloudEventSchemaV1_0.
+# input_schema = "EventGridSchema"
+
+# local_auth_enabled  —  bool  (optional, default: false)
+#   Allow access-key (SAS) authentication for publishing to the topic. Off by
+#   default (Entra ID / managed-identity publishing only). Set true only if your
+#   publishers use the topic access keys.
+# local_auth_enabled = false
+
+# public_network_access_enabled  —  bool  (optional, default: true)
+#   Allow publishing over the public endpoint. Keep true for most topics
+#   (optionally narrowed by allowed_inbound_ip_masks); set false for
+#   private-endpoint-only topics.
+# public_network_access_enabled = true
+
+# allowed_inbound_ip_masks  —  list  (optional, default: [])
+#   Optional list of CIDRs/IPs allowed to publish over the public endpoint
+#   (action is always Allow). Empty means no IP restriction. Requires
+#   public_network_access_enabled = true.
+# allowed_inbound_ip_masks = []
+
+# identity_ids  —  list  (optional, default: [])
+#   User-assigned managed identity IDs to attach to the topic. A system-assigned
+#   identity is always created; supplying IDs additionally enables user-assigned
+#   identities for managed delivery/dead-lettering.
+# identity_ids = []
+
+# create_queue_target  —  bool  (optional, default: false)
+#   Create a dedicated Storage Account + Storage Queue inside the module to
+#   receive events. Subscriptions can then target it with use_created_queue =
+#   true. Cheapest reliable delivery target (no public webhook to stand up).
+create_queue_target        = true
+
+# queue_storage_account_name  —  string  (optional, default: null)
+#   Globally-unique Storage Account name (3-24 lowercase letters/digits) for the
+#   created queue target. Required when create_queue_target = true.
+#   Constraint: queue_storage_account_name must be 3-24 characters of lowercase
+#   letters and digits only.
+queue_storage_account_name = "stegexampleprod001"
+
+# queue_account_replication_type  —  string  (optional, default: "LRS")
+#   Replication for the created queue Storage Account. Defaults to LRS
+#   (single-region, cheapest); the queue is a transient delivery buffer.
+#   Constraint: queue_account_replication_type must be one of LRS, ZRS, GRS,
+#   GZRS, RAGRS, RAGZRS.
+# queue_account_replication_type = "LRS"
+
+# queue_name  —  string  (optional, default: "eventgrid-events")
+#   Name of the Storage Queue created when create_queue_target = true (3-63
+#   lowercase letters, digits and hyphens; cannot start/end with a hyphen).
+#   Constraint: queue_name must be 3-63 chars of lowercase letters, digits and
+#   hyphens and may not start or end with a hyphen.
+queue_name                 = "orders-events"
+
+# queue_message_ttl_seconds  —  number  (optional, default: null)
+#   Time-to-live (seconds) for events delivered into the created queue. null
+#   keeps Event Grid's default (7 days).
+#   Constraint: queue_message_ttl_seconds must be a positive number of seconds,
+#   or null.
+# queue_message_ttl_seconds = null
+
+# event_subscriptions  —  map  (optional, default: {})
+#   Constraint: Each event subscription must target exactly one of:
+#   use_created_queue, storage_queue, or webhook.
+event_subscriptions = {
+  to-queue = {
+    use_created_queue    = true
+    included_event_types = ["Orders.Created", "Orders.Updated"]
+    subject_begins_with  = "orders/"
+  }
+}
+
+# tags  —  map  (optional, default: {})
+#   Tags applied to all resources.
+tags = {
+  environment = "example"
+  managed_by  = "iac-bazaar"
+}
